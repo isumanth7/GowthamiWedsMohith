@@ -1,54 +1,16 @@
-import { useEffect, useRef } from 'react';
-import { motion } from 'framer-motion';
+﻿import { motion } from 'framer-motion';
 
+// Reduced to 4 twinkles on mobile-friendly positions — less DOM/animation work
 const TWINKLES = [
   { left: '10%', top: '18%', delay: '0.2s' },
   { left: '84%', top: '12%', delay: '1.1s' },
   { left: '18%', top: '70%', delay: '2.0s' },
   { left: '90%', top: '62%', delay: '0.6s' },
-  { left: '50%', top: '8%', delay: '1.7s' },
-  { left: '70%', top: '86%', delay: '2.4s' },
-  { left: '6%', top: '45%', delay: '1.4s' },
-  { left: '93%', top: '38%', delay: '0.9s' },
 ];
 
-// Letter animation for name characters
-const letterVariants = {
-  hidden: { opacity: 0, y: 26, scale: 0.9, filter: 'blur(7px)' },
-  visible: (i) => ({
-    opacity: 1,
-    y: 0,
-    scale: 1,
-    filter: 'blur(0px)',
-    transition: { duration: 0.9, delay: 1.1 + i * 0.08, ease: [0.2, 0.7, 0.2, 1] },
-  }),
-};
-
-function AnimatedName({ name }) {
-  return (
-    <span style={{ display: 'block' }}>
-      {name.split('').map((ch, i) => (
-        <motion.span
-          key={i}
-          custom={i}
-          variants={letterVariants}
-          initial="hidden"
-          animate="visible"
-          style={{ display: 'inline-block' }}
-        >
-          {ch === ' ' ? '\u00a0' : ch}
-        </motion.span>
-      ))}
-    </span>
-  );
-}
-
 export default function Hero() {
-  const archRef = useRef(null);
-
   return (
     <section id="hero">
-      {/* Twinkle stars */}
       {TWINKLES.map((t, i) => (
         <i
           key={i}
@@ -60,7 +22,6 @@ export default function Hero() {
       <div className="wrap">
         <motion.div
           className="arch-frame"
-          ref={archRef}
           initial={{ opacity: 0, y: 40, scale: 0.95 }}
           animate={{ opacity: 1, y: 0, scale: 1 }}
           transition={{ duration: 1.4, delay: 0.1, ease: [0.2, 0.8, 0.2, 1] }}
@@ -85,9 +46,16 @@ export default function Hero() {
             Together with their families
           </motion.p>
 
-          {/* Names */}
+          {/* Names — single motion per name instead of per-letter */}
           <h1 className="hero-names script">
-            <AnimatedName name="Gowthami" />
+            <motion.span
+              style={{ display: 'block' }}
+              initial={{ opacity: 0, y: 22, filter: 'blur(6px)' }}
+              animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
+              transition={{ duration: 0.9, delay: 1.1, ease: [0.2, 0.7, 0.2, 1] }}
+            >
+              Gowthami
+            </motion.span>
             <motion.span
               className="hero-amp"
               initial={{ opacity: 0, scale: 0.3 }}
@@ -97,7 +65,14 @@ export default function Hero() {
             >
               &amp;
             </motion.span>
-            <AnimatedName name="Mohith" />
+            <motion.span
+              style={{ display: 'block' }}
+              initial={{ opacity: 0, y: 22, filter: 'blur(6px)' }}
+              animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
+              transition={{ duration: 0.9, delay: 1.9, ease: [0.2, 0.7, 0.2, 1] }}
+            >
+              Mohith
+            </motion.span>
           </h1>
 
           {/* Lead */}

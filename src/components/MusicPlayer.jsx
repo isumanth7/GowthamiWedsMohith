@@ -1,148 +1,101 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 
-const VIDEO_ID  = 'LG6PANt6sM8';
+// ── Clip window (seconds) ──────────────────────────────────────────
 const START_SEC = 90;   // 1:30
 const END_SEC   = 120;  // 2:00
 
-export default function MusicPlayer({ playing }) {
-  const divRef      = useRef(null);   // anchor div that YT replaces with iframe
-  const playerRef   = useRef(null);   // YT.Player instance
-  const pendingPlay = useRef(false);  // play requested before player was ready
-  const didInit     = useRef(false);  // StrictMode guard — init only once
+// Path to the local MP3 served from /public/assets/
+const SONG_SRC = '/assets/Seetha Kalyanam - SenSongsMp3.Co.mp3';
 
-  const [ready,   setReady]   = useState(false);
+export default function MusicPlayer({ playing }) {
+  const audioRef = useRef(null);
+  const rafRef   = useRef(null);  // requestAnimationFrame id for end-detection
   const [muted,   setMuted]   = useState(false);
   const [visible, setVisible] = useState(false);
 
-  /* ── Create the YouTube player exactly once ── */
+  /* ── Create <audio> element once ────────────────────────────── */
   useEffect(() => {
-    // React StrictMode double-fires effects in dev — skip the second run.
-    if (didInit.current) return;
-    didInit.current = true;
+    const audio       = new Audio(SONG_SRC);
+    audio.preload     = 'auto';
+    audio.loop        = false;       // we do manual loop to enforce END_SEC
+    audio.currentTime = START_SEC;   // pre-seek so first play starts at 1:30
+    audioRef.current  = audio;
 
-    const createPlayer = () => {
-      // Safety: if the div is already gone or player exists, bail out.
-      if (!divRef.current || playerRef.current) return;
-
-      playerRef.current = new window.YT.Player(divRef.current, {
-        videoId: VIDEO_ID,
-        height: '1',
-        width:  '1',
-        playerVars: {
-          autoplay:        0,
-          start:           START_SEC,
-          end:             END_SEC,
-          controls:        0,
-          disablekb:       1,
-          fs:              0,
-          iv_load_policy:  3,
-          modestbranding:  1,
-          rel:             0,
-          loop:            1,
-          playlist:        VIDEO_ID,
-          // Fix postMessage origin warning in dev:
-          origin:          window.location.origin,
-        },
-        events: {
-          onReady: (e) => {
-            setReady(true);
-            // If play was requested before the player was ready, start now.
-            if (pendingPlay.current) {
-              e.target.seekTo(START_SEC, true);
-              e.target.playVideo();
-              pendingPlay.current = false;
-            }
-          },
-          onStateChange: (e) => {
-            // When clip reaches END_SEC the player fires ENDED (0) — loop back.
-            if (e.data === window.YT.PlayerState.ENDED) {
-              e.target.seekTo(START_SEC, true);
-              e.target.playVideo();
-            }
-          },
-        },
-      });
+    /* iOS / Android: unlock with a silent touch on the document so the
+       element is "user-activation-tainted" before we call play().
+       This means the real play() call can succeed even after setTimeout. */
+    const silentUnlock = () => {
+      audio.load();  // re-primes the element in the user-gesture context
     };
-
-    if (window.YT && window.YT.Player) {
-      // API already loaded (e.g. cached from another page).
-      createPlayer();
-    } else {
-      // Queue behind any previously-set callback (safe chaining).
-      const prev = window.onYouTubeIframeAPIReady;
-      window.onYouTubeIframeAPIReady = () => {
-        if (typeof prev === 'function') prev();
-        createPlayer();
-      };
-      // Inject the script only if not already present.
-      if (!document.querySelector('script[src*="youtube.com/iframe_api"]')) {
-        const tag  = document.createElement('script');
-        tag.src    = 'https://www.youtube.com/iframe_api';
-        tag.async  = true;
-        document.head.appendChild(tag);
-      }
-    }
+    document.addEventListener('touchstart', silentUnlock, { once: true, passive: true });
+    document.addEventListener('mousedown',  silentUnlock, { once: true });
 
     return () => {
-      // Cleanup on real unmount — destroy the player so it can be re-created.
-      if (playerRef.current?.destroy) {
-        playerRef.current.destroy();
-        playerRef.current = null;
-      }
-      didInit.current = false;
+      cancelAnimationFrame(rafRef.current);
+      audio.pause();
+      audioRef.current = null;
+      document.removeEventListener('touchstart', silentUnlock);
+      document.removeEventListener('mousedown',  silentUnlock);
     };
   }, []);
 
-  /* ── Start music when invitation is opened ── */
-  useEffect(() => {
-    if (!playing) return;
-    setVisible(true);
+  /* ── RAF loop: enforce clip between START_SEC → END_SEC ──────── */
+  const startLoopCheck = useCallback(() => {
+    const tick = () => {
+      const audio = audioRef.current;
+      if (!audio) return;
+      if (audio.currentTime >= END_SEC || audio.ended) {
+        audio.currentTime = START_SEC;
+        audio.play().catch(() => {});
+      }
+      rafRef.current = requestAnimationFrame(tick);
+    };
+    cancelAnimationFrame(rafRef.current);
+    rafRef.current = requestAnimationFrame(tick);
+  }, []);
 
-    if (ready && playerRef.current) {
-      try {
-        playerRef.current.seekTo(START_SEC, true);
-        playerRef.current.playVideo();
-      } catch {
-        // Player not fully bootstrapped yet — mark for pending play.
-        pendingPlay.current = true;
+  /* ── Start / stop playback when `playing` prop changes ──────── */
+  useEffect(() => {
+    const audio = audioRef.current;
+    if (!audio) return;
+
+    if (playing) {
+      setVisible(true);
+      audio.currentTime = START_SEC;
+      const playPromise = audio.play();
+      if (playPromise !== undefined) {
+        playPromise
+          .then(() => startLoopCheck())
+          .catch(() => {
+            /* Autoplay blocked — retry on next user interaction */
+            const retryPlay = () => {
+              audio.currentTime = START_SEC;
+              audio.play().then(() => startLoopCheck()).catch(() => {});
+            };
+            document.addEventListener('click',      retryPlay, { once: true });
+            document.addEventListener('touchstart', retryPlay, { once: true, passive: true });
+          });
+      } else {
+        // Older browsers that return undefined from play()
+        startLoopCheck();
       }
     } else {
-      pendingPlay.current = true;
+      cancelAnimationFrame(rafRef.current);
+      audio.pause();
     }
-  }, [playing, ready]);
+  }, [playing, startLoopCheck]);
 
-  /* ── Mute toggle ── */
+  /* ── Mute toggle ─────────────────────────────────────────────── */
   const toggleMute = () => {
-    if (!playerRef.current) return;
-    if (muted) {
-      playerRef.current.unMute();
-    } else {
-      playerRef.current.mute();
-    }
+    const audio = audioRef.current;
+    if (!audio) return;
+    audio.muted = !audio.muted;
     setMuted(m => !m);
   };
 
   return (
     <>
-      {/*
-        This div is the mount-point that YouTube replaces with its <iframe>.
-        It must always be in the DOM so the player survives re-renders.
-      */}
-      <div
-        ref={divRef}
-        style={{
-          position:      'fixed',
-          bottom:        0,
-          left:          0,
-          width:         1,
-          height:        1,
-          opacity:       0,
-          pointerEvents: 'none',
-          zIndex:        -1,
-        }}
-      />
-
-      {/* Floating music toggle button — shown only after invitation opens */}
+      {/* Floating music toggle — shown only after invitation opens */}
       {visible && (
         <button
           className={`music-btn${muted ? ' muted' : ''}`}

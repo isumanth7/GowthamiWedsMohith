@@ -31,6 +31,8 @@ body {
   background: var(--cream);
   overflow-x: hidden;
   font-weight: 300;
+  /* iOS momentum scrolling */
+  -webkit-overflow-scrolling: touch;
 }
 
 body.locked { overflow: hidden; height: 100vh; }
@@ -269,7 +271,6 @@ section {
   bottom: 0;
   cursor: pointer;
   z-index: 6;
-  will-change: transform;
   animation: ribbreath 4s ease-in-out infinite;
 }
 
@@ -405,6 +406,9 @@ section {
   z-index: 10;
   width: 100%;
   height: 100%;
+  /* Own compositing layer — prevents repaints on rest of page */
+  will-change: transform;
+  transform: translateZ(0);
 }
 
 /* ==================== HERO ==================== */
@@ -920,6 +924,9 @@ section {
 /* ==================== EVENTS ==================== */
 #events {
   background: linear-gradient(180deg, var(--peach), var(--blush));
+  /* Defer paint/layout of off-screen content */
+  content-visibility: auto;
+  contain-intrinsic-size: 0 600px;
 }
 
 .event-card {
@@ -1003,7 +1010,11 @@ section {
 }
 
 /* ==================== GALLERY ==================== */
-#gallery { background: var(--cream); }
+#gallery {
+  background: var(--cream);
+  content-visibility: auto;
+  contain-intrinsic-size: 0 500px;
+}
 
 .gallery-grid {
   display: grid;
@@ -1046,7 +1057,7 @@ section {
   font-weight: 500;
 }
 
-/* Gallery sheen animation */
+/* Gallery sheen — only runs after .in-view class added, saving GPU when off-screen */
 .gallery-item::after {
   content: '';
   position: absolute;
@@ -1054,8 +1065,11 @@ section {
   background: linear-gradient(110deg, transparent 35%, rgba(255,255,255,0.55) 50%, transparent 65%);
   transform: translateX(-120%);
   animation: sw 5s ease-in-out infinite;
+  animation-play-state: paused;
 }
-
+.gallery-item.in-view::after {
+  animation-play-state: running;
+}
 @keyframes sw { 60%, 100% { transform: translateX(120%); } }
 
 /* ==================== FOOTER ==================== */
@@ -1162,6 +1176,15 @@ section {
     animation-duration: 0.01s !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01s !important;
+  }
+  /* Stop canvas animation entirely on reduced-motion */
+  .petals-canvas { display: none; }
+}
+
+/* iOS safe-area padding for bottom-fixed music button */
+@supports (padding-bottom: env(safe-area-inset-bottom)) {
+  .music-btn {
+    bottom: calc(28px + env(safe-area-inset-bottom));
   }
 }
 
