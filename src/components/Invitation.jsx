@@ -1,15 +1,20 @@
 import { useEffect, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
+import { playMusic } from '../utils/audioPlayer';
 
 export default function Invitation({ opened, onOpen }) {
   const cardRef = useRef(null);
+  const triggeredRef = useRef(false);
   const [ribbonGone, setRibbonGone] = useState(false);
 
   const handleCardClick = () => {
-    if (!opened) {
-      setRibbonGone(true);
-      setTimeout(onOpen, 900);
-    }
+    if (triggeredRef.current || opened) return;
+    triggeredRef.current = true;
+
+    // Trigger audio immediately and synchronously in the user gesture call stack (iOS Safari requirement)
+    playMusic();
+    setRibbonGone(true);
+    setTimeout(onOpen, 900);
   };
   const canvasTL = useRef(null);
   const canvasTR = useRef(null);
@@ -44,7 +49,11 @@ export default function Invitation({ opened, onOpen }) {
   return (
     <motion.div
       onClick={!opened ? handleCardClick : undefined}
-      style={{ cursor: opened ? 'default' : 'pointer' }}
+      onTouchEnd={!opened ? handleCardClick : undefined}
+      role="button"
+      tabIndex={0}
+      aria-label="Open wedding invitation"
+      style={{ cursor: opened ? 'default' : 'pointer', touchAction: 'manipulation' }}
       className={`invitation-overlay${opened ? ' opened' : ''}`}
       animate={opened ? { opacity: 0, visibility: 'hidden', scale: 1.08 } : {}}
       transition={{ duration: 1.4, ease: [0.3, 0, 0.2, 1] }}
